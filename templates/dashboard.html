@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoDrive Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .progress {
+            height: 25px;
+        }
+        .progress-bar-animated {
+            animation-duration: 1.5s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <!-- Header Section -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="text-success">EcoDrive Dashboard</h1>
+            <a href="/logout" class="btn btn-danger">Logout</a>
+        </div>
+        
+        <!-- Main Dashboard -->
+        <div id="main-dashboard" class="p-4 border rounded bg-light shadow-sm">
+            <h4>Welcome, <strong>{{ session['user_id'] }}</strong></h4>
+            <p class="text-muted">Analyze your trips and profits below:</p>
+            
+            <form id="trip-form">
+                <div class="mb-3">
+                    <label for="start-location" class="form-label">Start Location</label>
+                    <input type="text" id="start-location" name="start_location" class="form-control" placeholder="Enter the starting location" required>
+                </div>
+                <div class="mb-3">
+                    <label for="end-location" class="form-label">End Location</label>
+                    <input type="text" id="end-location" name="end_location" class="form-control" placeholder="Enter the destination" required>
+                </div>
+                <div class="mb-3">
+                    <label for="uber-cab-type" class="form-label">Uber Cab Type</label>
+                    <select id="uber-cab-type" name="uber_cab_type" class="form-select">
+                        <option value="UberX">UberX</option>
+                        <option value="UberXL">UberXL</option>
+                        <option value="Lux">Uber Lux</option>
+                        <option value="Black">Uber Black</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="lyft-cab-type" class="form-label">Lyft Cab Type</label>
+                    <select id="lyft-cab-type" name="lyft_cab_type" class="form-select">
+                        <option value="Lyft">Lyft</option>
+                        <option value="lyftXL">Lyft XL</option>
+                        <option value="luxury">Lyft Lux</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success w-100">Calculate Trip</button>
+            </form>
+            
+            <!-- Progress Bar -->
+            <div id="progress-container" class="mt-4 d-none">
+                <p>Calculating trip...</p>
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 100%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-container" class="mt-5 d-none">
+            <h4 class="text-success">Trip Results</h4>
+            <ul class="list-group mb-4">
+                <li class="list-group-item"><strong>Distance:</strong> <span id="distance"></span> km</li>
+                <li class="list-group-item"><strong>Estimated Time:</strong> <span id="time"></span> minutes</li>
+                <li class="list-group-item"><strong>Fuel Cost:</strong> $<span id="fuel-cost"></span></li>
+                <li class="list-group-item"><strong>Uber Fare:</strong> $<span id="uber-fare"></span></li>
+                <li class="list-group-item"><strong>Lyft Fare:</strong> $<span id="lyft-fare"></span></li>
+                <li class="list-group-item"><strong>Uber Profit:</strong> $<span id="uber-profit"></span></li>
+                <li class="list-group-item"><strong>Lyft Profit:</strong> $<span id="lyft-profit"></span></li>
+            </ul>
+            <canvas id="profit-chart" width="400" height="200"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('trip-form');
+        const progressContainer = document.getElementById('progress-container');
+        const resultsContainer = document.getElementById('results-container');
+        const distanceEl = document.getElementById('distance');
+        const timeEl = document.getElementById('time');
+        const fuelCostEl = document.getElementById('fuel-cost');
+        const uberFareEl = document.getElementById('uber-fare');
+        const lyftFareEl = document.getElementById('lyft-fare');
+        const uberProfitEl = document.getElementById('uber-profit');
+        const lyftProfitEl = document.getElementById('lyft-profit');
+        const profitChartCanvas = document.getElementById('profit-chart');
+
+        let profitChart;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Show progress bar
+            progressContainer.classList.remove('d-none');
+            resultsContainer.classList.add('d-none');
+
+            // Collect form data
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/calculate_trip', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Update results
+                    distanceEl.textContent = data.distance_km;
+                    timeEl.textContent = data.estimated_time_min;
+                    fuelCostEl.textContent = data.fuel_cost;
+                    uberFareEl.textContent = data.uber_fare ?? 'N/A';
+                    lyftFareEl.textContent = data.lyft_fare ?? 'N/A';
+                    uberProfitEl.textContent = data.profit_margin_uber ?? 'N/A';
+                    lyftProfitEl.textContent = data.profit_margin_lyft ?? 'N/A';
+
+                    // Update chart
+                    const profitData = [
+                        data.profit_margin_uber || 0,
+                        data.profit_margin_lyft || 0,
+                    ];
+
+                    if (profitChart) {
+                        profitChart.data.datasets[0].data = profitData;
+                        profitChart.update();
+                    } else {
+                        profitChart = new Chart(profitChartCanvas, {
+                            type: 'bar',
+                            data: {
+                                labels: ['Uber Profit', 'Lyft Profit'],
+                                datasets: [{
+                                    label: 'Profit ($)',
+                                    data: profitData,
+                                    backgroundColor: ['#4CAF50', '#2196F3']
+                                }]
+                            }
+                        });
+                    }
+
+                    // Show results and hide progress bar
+                    resultsContainer.classList.remove('d-none');
+                } else {
+                    alert(data.error || 'An error occurred while calculating the trip.');
+                }
+            } catch (err) {
+                alert('Failed to calculate trip. Please try again.');
+            } finally {
+                progressContainer.classList.add('d-none');
+            }
+        });
+    </script>
+</body>
+</html>
