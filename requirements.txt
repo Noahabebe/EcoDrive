@@ -4,7 +4,6 @@ playwright
 requests
 pandas
 datetime
-os
 pickle
 openweathermap
 re
